@@ -108,6 +108,7 @@ canvas {
   backdrop-filter: blur(3px);
 }
 
+.start-screen[hidden],
 .game-over[hidden] { display: none; }
 
 .start-card {
@@ -183,7 +184,7 @@ button:active {
 .controls {
   height: 70px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.2fr 1fr;
   gap: 12px;
   padding-top: 12px;
 }
@@ -194,6 +195,17 @@ button:active {
   font-size: 28px;
   line-height: 1;
 }
+
+.controls .horn-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--orange);
+  font-size: 15px;
+}
+
+.horn-button span { font-size: 20px; }
 
 @media (min-width: 700px) {
   .game-shell { min-height: 720px; }

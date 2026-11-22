@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: detblaalyn
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /up
+    envVars:
+      - key: HTTP_PORT
+        value: "10000"
+      - key: RAILS_MASTER_KEY
+        sync: false

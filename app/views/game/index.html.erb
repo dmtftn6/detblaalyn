@@ -1,5 +1,3 @@
-<h1>Game#index</h1>
-<p>Find me in app/views/game/index.html.erb</p>
 <main class="game-shell">
   <header class="game-header">
     <div>
@@ -20,7 +18,7 @@
         <div class="mini-car" aria-hidden="true"></div>
         <p class="eyebrow">KLAR PÅ MOTORVEJEN?</p>
         <h2>Undvig trafikken</h2>
-        <p>Svup til venstre eller højre, eller brug pilene.</p>
+        <p>Svup eller brug pilene. Tryk på BÅT for at skubbe biler væk.</p>
         <button type="button" id="startButton">Kør nu</button>
       </div>
     </div>
@@ -36,6 +34,9 @@
 
   <nav class="controls" aria-label="Styrebil">
     <button type="button" id="leftButton" aria-label="Kør til venstre">←</button>
+    <button type="button" id="hornButton" class="horn-button" aria-label="Brug båthornet">
+      <span aria-hidden="true">📣</span> BÅT!
+    </button>
     <button type="button" id="rightButton" aria-label="Kør til højre">→</button>
   </nav>
 </main>
@@ -59,6 +60,7 @@
     let lastTime = 0;
     let spawnTimer = 0;
     let touchStartX = null;
+    let audioContext;
 
     const player = { width: 52, height: 92 };
 
@@ -132,7 +134,10 @@
       enemies.push({
         lane: laneIndex,
         y: -100,
-        color: colors[Math.floor(Math.random() * colors.length)]
+        color: colors[Math.floor(Math.random() * colors.length)],
+        pushed: false,
+        pushOffset: 0,
+        pushDirection: 0
       });
     }
 
@@ -161,7 +166,48 @@
       lane = Math.max(0, Math.min(lanes.length - 1, lane + direction));
     }
 
+    function playHorn() {
+      if (!window.AudioContext) return;
+      audioContext ||= new AudioContext();
+      if (audioContext.state === "suspended") audioContext.resume();
+
+      const now = audioContext.currentTime;
+      const gain = audioContext.createGain();
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      gain.connect(audioContext.destination);
+
+      [205, 260].forEach((frequency) => {
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = "sawtooth";
+        oscillator.frequency.setValueAtTime(frequency, now);
+        oscillator.connect(gain);
+        oscillator.start(now);
+        oscillator.stop(now + 0.33);
+      });
+    }
+
+    function honk() {
+      if (!running) return;
+      playHorn();
+
+      const playerY = 510;
+      const target = enemies.find((enemy) =>
+        !enemy.pushed &&
+        enemy.lane === lane &&
+        enemy.y < playerY &&
+        enemy.y + player.height > playerY - 190
+      );
+
+      if (target) {
+        target.pushed = true;
+        target.pushDirection = target.lane === lanes.length - 1 ? 1 : -1;
+      }
+    }
+
     function collision(enemy) {
+      if (enemy.pushed) return false;
       const enemyX = lanes[enemy.lane];
       const playerX = lanes[lane];
       const playerY = 510;
@@ -187,10 +233,14 @@
       drawRoad();
       enemies.forEach((enemy) => {
         enemy.y += delta * (4.2 + Math.min(score / 180, 4));
-        drawCar(lanes[enemy.lane], enemy.y, enemy.color);
+        if (enemy.pushed) enemy.pushOffset += delta * 4.5;
+        const x = lanes[enemy.lane] + enemy.pushDirection * enemy.pushOffset;
+        drawCar(x, enemy.y, enemy.color);
       });
 
-      enemies = enemies.filter((enemy) => enemy.y < canvas.height + 100);
+      enemies = enemies.filter((enemy) =>
+        enemy.y < canvas.height + 100 && enemy.pushOffset < 100
+      );
       drawCar(lanes[lane], 510, "#3dc9b6", true);
 
       scoreElement.textContent = `${Math.floor(score)} m`;
@@ -206,10 +256,12 @@
     document.getElementById("restartButton").addEventListener("click", reset);
     document.getElementById("leftButton").addEventListener("pointerdown", () => move(-1));
     document.getElementById("rightButton").addEventListener("pointerdown", () => move(1));
+    document.getElementById("hornButton").addEventListener("pointerdown", honk);
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
       if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
+      if (event.code === "Space" || event.key.toLowerCase() === "h") honk();
     });
 
     stage.addEventListener("touchstart", (event) => {

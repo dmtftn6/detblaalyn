@@ -3,7 +3,7 @@
 
 # This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
 # docker build -t detblalyn .
-# docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name detblalyn detblalyn
+# docker run -d -p 10000:10000 -e RAILS_MASTER_KEY=<value from config/master.key> --name detblalyn detblalyn
 
 # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
 
@@ -73,5 +73,5 @@ COPY --chown=rails:rails --from=build /rails /rails
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
 # Start server via Thruster by default, this can be overwritten at runtime
-EXPOSE 80
+EXPOSE 10000
 CMD ["./bin/thrust", "./bin/rails", "server"]
