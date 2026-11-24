@@ -7,7 +7,7 @@ services:
     dockerContext: .
     healthCheckPath: /up
     envVars:
-      - key: HTTP_PORT
+      - key: PORT
         value: "10000"
       - key: RAILS_MASTER_KEY
         sync: false
