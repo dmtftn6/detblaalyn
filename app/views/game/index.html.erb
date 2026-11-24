@@ -101,7 +101,6 @@
     const recordDistance = document.getElementById("recordDistance");
 
     const lanes = [78, 180, 282];
-    const easterEggNames = ["LaksenVax", "Sebastian"];
     let lane = 1;
     let enemies = [];
     let pushClouds = [];
@@ -508,9 +507,13 @@
       });
     }
 
+    function hasEasterEggRole() {
+      return ["LaksenVax", "Sebastian"].includes(playerNameInput.value.trim());
+    }
+
     function reset() {
       saveProfile();
-      easterEggImmune = easterEggNames.includes(playerNameInput.value.trim());
+      easterEggImmune = hasEasterEggRole();
       canvas.dataset.immune = easterEggImmune ? "true" : "false";
       score = 0;
       roadTurns = [];
@@ -782,7 +785,7 @@
     }
 
     function toggleEasterEggByShake() {
-      if (!easterEggNames.includes(playerNameInput.value.trim())) return;
+      if (!hasEasterEggRole()) return;
       easterEggImmune = !easterEggImmune;
       canvas.dataset.immune = easterEggImmune ? "true" : "false";
       playHorn();
