@@ -12,6 +12,11 @@
 
   <section class="game-stage" id="gameStage" aria-label="Bilspil">
     <canvas id="gameCanvas" width="360" height="640"></canvas>
+    <div class="record-holder" id="recordHolder">
+      <span>Rekordholder</span>
+      <strong id="recordHolderName">Ukendt</strong>
+      <small id="recordHolderScore">0 m</small>
+    </div>
     <div class="record-popup" id="recordPopup" role="status" aria-live="assertive" hidden>
       <span id="recordMessage">Fedt kørt!</span>
       <strong id="recordDistance">Ny rekord: 0 m</strong>
@@ -84,6 +89,8 @@
     const scoreLabel = document.getElementById("scoreLabel");
     const finalScore = document.getElementById("finalScore");
     const playerNameInput = document.getElementById("playerName");
+    const recordHolderName = document.getElementById("recordHolderName");
+    const recordHolderScore = document.getElementById("recordHolderScore");
     const recordPopup = document.getElementById("recordPopup");
     const recordMessage = document.getElementById("recordMessage");
     const recordDistance = document.getElementById("recordDistance");
@@ -104,6 +111,17 @@
     let playerX = lanes[1];
     let laneSteering = 0;
     let laneChangeProgress = 1;
+    let easterEggImmune = false;
+    let lastShakeTime = 0;
+
+    function roadCurve(y) {
+      return Math.sin((y / canvas.height) * Math.PI * 1.35 + score * 0.012) * 24 +
+        Math.sin((y / canvas.height) * Math.PI * 3.2 + score * 0.004) * 7;
+    }
+
+    function laneX(laneIndex, y) {
+      return lanes[laneIndex] + roadCurve(y);
+    }
     const profileKey = "det-blaa-lyn-player";
     const recordMessages = [
       "Fedt kørt!",
@@ -134,6 +152,10 @@
         }
         if (Number.isFinite(profile.bestScore)) {
           scoreLabel.textContent = `Bedst: ${Math.floor(profile.bestScore)} m`;
+          recordHolderScore.textContent = `${Math.floor(profile.bestScore)} m`;
+        }
+        if (typeof profile.name === "string" && profile.name.trim()) {
+          recordHolderName.textContent = profile.name.trim();
         }
       } catch {
         localStorage.removeItem(profileKey);
@@ -157,22 +179,48 @@
       ctx.fillStyle = "#26313a";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      ctx.beginPath();
+      for (let y = 0; y <= canvas.height; y += 8) {
+        const x = 24 + roadCurve(y);
+        if (y === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      for (let y = canvas.height; y >= 0; y -= 8) {
+        ctx.lineTo(336 + roadCurve(y), y);
+      }
+      ctx.closePath();
       ctx.fillStyle = "#3b464d";
-      ctx.fillRect(24, 0, 312, canvas.height);
+      ctx.fill();
 
-      ctx.fillStyle = "#f6d365";
-      ctx.fillRect(26, 0, 5, canvas.height);
-      ctx.fillRect(329, 0, 5, canvas.height);
+      ctx.strokeStyle = "#f6d365";
+      ctx.lineWidth = 5;
+      [24, 336].forEach((baseX) => {
+        ctx.beginPath();
+        for (let y = 0; y <= canvas.height; y += 8) {
+          const x = baseX + roadCurve(y);
+          if (y === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
 
       ctx.fillStyle = "#eef1e5";
       for (let y = roadOffset - 80; y < canvas.height; y += 80) {
-        ctx.fillRect(127, y, 6, 42);
-        ctx.fillRect(229, y, 6, 42);
+        [127, 229].forEach((baseX) => {
+          ctx.fillRect(baseX + roadCurve(y), y, 6, 42);
+        });
       }
 
       ctx.fillStyle = "rgba(255,255,255,.12)";
-      ctx.fillRect(49, 0, 1, canvas.height);
-      ctx.fillRect(311, 0, 1, canvas.height);
+      [49, 311].forEach((baseX) => {
+        ctx.beginPath();
+        for (let y = 0; y <= canvas.height; y += 8) {
+          const x = baseX + roadCurve(y);
+          if (y === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
     }
 
     function roundedRect(x, y, width, height, radius) {
@@ -187,28 +235,46 @@
       ctx.shadowBlur = 8;
       ctx.shadowOffsetY = 5;
 
-      ctx.fillStyle = "#10171c";
-      ctx.fillRect(-player.width / 2 - 3, 12, 8, 28);
-      ctx.fillRect(player.width / 2 - 5, 12, 8, 28);
-      ctx.fillRect(-player.width / 2 - 3, 58, 8, 28);
-      ctx.fillRect(player.width / 2 - 5, 58, 8, 28);
+      ctx.fillStyle = "#090d10";
+      ctx.fillRect(-31, 8, 9, 25);
+      ctx.fillRect(22, 8, 9, 25);
+      ctx.fillRect(-31, 59, 9, 25);
+      ctx.fillRect(22, 59, 9, 25);
 
-      roundedRect(-player.width / 2, 0, player.width, player.height, 13);
+      ctx.fillStyle = "#10171c";
+      ctx.fillRect(-player.width / 2 - 5, 12, 11, 28);
+      ctx.fillRect(player.width / 2 - 6, 12, 11, 28);
+      ctx.fillRect(-player.width / 2 - 5, 58, 11, 28);
+      ctx.fillRect(player.width / 2 - 6, 58, 11, 28);
+
+      roundedRect(-25, 4, 50, 84, 10);
       ctx.fillStyle = color;
       ctx.fill();
 
-      roundedRect(-17, 16, 34, 24, 7);
+      ctx.fillStyle = "rgba(255,255,255,.18)";
+      ctx.fillRect(-20, 8, 40, 5);
+      ctx.fillRect(-20, 79, 40, 4);
+
+      roundedRect(-17, 20, 34, 22, 6);
       ctx.fillStyle = "#90bac7";
       ctx.fill();
-      ctx.fillRect(-13, 20, 26, 3);
+      ctx.fillRect(-13, 24, 26, 3);
 
-      roundedRect(-17, 55, 34, 19, 6);
-      ctx.fillStyle = "#bcc9cd";
+      ctx.fillStyle = "#1a252b";
+      ctx.fillRect(-19, 48, 38, 7);
+
+      roundedRect(-17, 57, 34, 16, 5);
+      ctx.fillStyle = "#263840";
       ctx.fill();
 
       ctx.fillStyle = playerCar ? "#fff4aa" : "#ff6659";
       ctx.fillRect(-21, 8, 10, 5);
       ctx.fillRect(11, 8, 10, 5);
+
+      ctx.fillStyle = "#151b1e";
+      ctx.fillRect(-28, 0, 56, 5);
+      ctx.fillRect(-24, 5, 5, 7);
+      ctx.fillRect(19, 5, 5, 7);
       ctx.restore();
     }
 
@@ -232,8 +298,10 @@
 
     function reset() {
       saveProfile();
+      easterEggImmune = playerNameInput.value.trim() === "LaksenVax";
+      canvas.dataset.immune = easterEggImmune ? "true" : "false";
       lane = 1;
-      playerX = lanes[lane];
+      playerX = laneX(lane, 510);
       laneSteering = 0;
       laneChangeProgress = 1;
       enemies = [];
@@ -261,9 +329,8 @@
         recordDistance.textContent = `Ny rekord: ${bestScore} m`;
         recordPopup.hidden = false;
         scoreLabel.textContent = `Bedst: ${bestScore} m`;
-        window.setTimeout(() => {
-          recordPopup.hidden = true;
-        }, 3000);
+        recordHolderName.textContent = playerNameInput.value.trim() || "Ukendt";
+        recordHolderScore.textContent = `${bestScore} m`;
       }
       gameOverScreen.hidden = false;
     }
@@ -279,24 +346,46 @@
     }
 
     function playHorn() {
-      if (!window.AudioContext) return;
-      audioContext ||= new AudioContext();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      audioContext ||= new AudioContextClass();
       if (audioContext.state === "suspended") audioContext.resume();
+
+      const hornStage = Math.floor(score / 500);
+      const toneSets = [
+        [196, 233],
+        [220, 261.63],
+        [246.94, 293.66],
+        [261.63, 311.13],
+        [293.66, 349.23],
+        [329.63, 392],
+        [349.23, 440]
+      ];
+      const tones = toneSets[hornStage % toneSets.length];
 
       const now = audioContext.currentTime;
       const gain = audioContext.createGain();
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
-      gain.connect(audioContext.destination);
+      const filter = audioContext.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(1450, now);
+      filter.Q.setValueAtTime(1.2, now);
 
-      [205, 260].forEach((frequency) => {
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + 0.055);
+      gain.gain.setValueAtTime(0.22, now + 0.48);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+      gain.connect(filter);
+      filter.connect(audioContext.destination);
+
+      tones.forEach((frequency, index) => {
         const oscillator = audioContext.createOscillator();
         oscillator.type = "sawtooth";
         oscillator.frequency.setValueAtTime(frequency, now);
+        oscillator.frequency.linearRampToValueAtTime(frequency - (index ? 4 : 7), now + 0.72);
+        oscillator.detune.setValueAtTime(index ? 7 : -7, now);
         oscillator.connect(gain);
         oscillator.start(now);
-        oscillator.stop(now + 0.33);
+        oscillator.stop(now + 0.73);
       });
     }
 
@@ -320,8 +409,9 @@
 
     function collision(enemy) {
       if (enemy.pushed) return false;
-      const enemyX = lanes[enemy.lane];
-      const playerX = lanes[lane];
+      if (easterEggImmune) return false;
+      const enemyX = laneX(enemy.lane, enemy.y);
+      const playerX = laneX(lane, 510);
       const playerY = 510;
       return Math.abs(enemyX - playerX) < 46 &&
         enemy.y + player.height > playerY &&
@@ -346,7 +436,7 @@
       enemies.forEach((enemy) => {
         enemy.y += delta * (4.2 + Math.min(score / 180, 4));
         if (enemy.pushed) enemy.pushOffset += delta * 4.5;
-        const x = lanes[enemy.lane] + enemy.pushDirection * enemy.pushOffset;
+        const x = laneX(enemy.lane, enemy.y) + enemy.pushDirection * enemy.pushOffset;
         drawCar(x, enemy.y, enemy.color);
       });
 
@@ -355,11 +445,12 @@
       );
       laneChangeProgress = Math.min(1, laneChangeProgress + delta * 0.055);
       const easedProgress = 1 - Math.pow(1 - laneChangeProgress, 3);
-      playerX += (lanes[lane] - playerX) * (0.12 + easedProgress * 0.12) * delta;
+      const targetPlayerX = laneX(lane, 510);
+      playerX += (targetPlayerX - playerX) * (0.12 + easedProgress * 0.12) * delta;
 
       if (laneChangeProgress >= 1) {
         laneSteering = 0;
-        playerX = lanes[lane];
+        playerX = targetPlayerX;
       }
 
       ctx.save();
@@ -393,16 +484,50 @@
         document.querySelector(".mini-car").style.background = playerColor;
         if (!running) {
           drawRoad();
-          drawCar(lanes[lane], 510, playerColor, true);
+          drawCar(laneX(lane, 510), 510, playerColor, true);
         }
       });
     });
-    playerNameInput.addEventListener("input", saveProfile);
+    playerNameInput.addEventListener("input", () => {
+      saveProfile();
+      recordHolderName.textContent = playerNameInput.value.trim() || "Ukendt";
+    });
+
+    function breakEasterEgg() {
+      if (!easterEggImmune) return;
+      easterEggImmune = false;
+      canvas.dataset.immune = "false";
+      playHorn();
+    }
+
+    function toggleEasterEggByShake() {
+      if (playerNameInput.value.trim() !== "LaksenVax") return;
+      easterEggImmune = !easterEggImmune;
+      canvas.dataset.immune = easterEggImmune ? "true" : "false";
+      playHorn();
+    }
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
       if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
       if (event.code === "KeyH" && !event.repeat) honk();
+      if (event.code === "KeyS" && !event.repeat) breakEasterEgg();
+    });
+
+    window.addEventListener("devicemotion", (event) => {
+      const acceleration = event.accelerationIncludingGravity;
+      if (!acceleration) return;
+
+      const strength = Math.sqrt(
+        (acceleration.x || 0) ** 2 +
+        (acceleration.y || 0) ** 2 +
+        (acceleration.z || 0) ** 2
+      );
+      const now = Date.now();
+      if (strength > 24 && now - lastShakeTime > 1000) {
+        lastShakeTime = now;
+        toggleEasterEggByShake();
+      }
     });
 
     stage.addEventListener("touchstart", (event) => {
@@ -416,8 +541,18 @@
       touchStartX = null;
     }, { passive: true });
 
+    document.getElementById("startButton").addEventListener("click", async () => {
+      if (typeof DeviceMotionEvent?.requestPermission === "function") {
+        try {
+          await DeviceMotionEvent.requestPermission();
+        } catch {
+          return;
+        }
+      }
+    });
+
     loadProfile();
     drawRoad();
-    drawCar(lanes[lane], 510, playerColor, true);
+    drawCar(laneX(lane, 510), 510, playerColor, true);
   })();
 </script>

@@ -97,6 +97,43 @@ canvas {
   display: block;
 }
 
+.record-holder {
+  position: absolute;
+  z-index: 4;
+  bottom: 12px;
+  left: 12px;
+  max-width: 138px;
+  padding: 8px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  background: rgba(244,240,223,.94);
+  box-shadow: 3px 3px 0 var(--ink);
+  line-height: 1.05;
+}
+
+.record-holder span,
+.record-holder small {
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.record-holder strong {
+  display: block;
+  max-width: 118px;
+  margin: 3px 0 2px;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-holder small {
+  color: #627068;
+  font-size: 11px;
+}
+
 .record-popup {
   position: absolute;
   z-index: 5;
