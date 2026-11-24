@@ -104,6 +104,13 @@
     let lastTime = 0;
     let spawnTimer = 0;
     let touchStartX = null;
+    let playerY = 510;
+    let verticalDirection = 0;
+    const verticalKeys = new Set();
+    let gyroVerticalDirection = 0;
+    let gyroBaselineBeta = null;
+    let gyroBaselineGamma = null;
+    let gyroLaneDirection = 0;
     let audioContext;
 
     const player = { width: 52, height: 92 };
@@ -113,10 +120,36 @@
     let laneChangeProgress = 1;
     let easterEggImmune = false;
     let lastShakeTime = 0;
+    let roadTurns = [];
+    let roadGeneratedUntil = 0;
+
+    function ensureRoadTurns(distance) {
+      while (roadGeneratedUntil < distance) {
+        roadGeneratedUntil += 50 + Math.random() * 110;
+        const uTurn = Math.random() < 0.12;
+        const length = uTurn ? 170 + Math.random() * 90 : 300 + Math.random() * 400;
+        roadTurns.push({
+          start: roadGeneratedUntil,
+          end: roadGeneratedUntil + length,
+          direction: Math.random() < 0.5 ? -1 : 1,
+          amplitude: uTurn ? 42 + Math.random() * 10 : 24 + Math.random() * 10
+        });
+        roadGeneratedUntil += length;
+      }
+    }
 
     function roadCurve(y) {
-      return Math.sin((y / canvas.height) * Math.PI * 1.35 + score * 0.012) * 24 +
-        Math.sin((y / canvas.height) * Math.PI * 3.2 + score * 0.004) * 7;
+      const distance = score + (510 - y) * 0.3;
+      ensureRoadTurns(distance + 500);
+
+      for (const turn of roadTurns) {
+        if (distance < turn.start) return 0;
+        if (distance <= turn.end) {
+          const progress = (distance - turn.start) / (turn.end - turn.start);
+          return turn.direction * turn.amplitude * (1 - Math.cos(progress * Math.PI * 2)) / 2;
+        }
+      }
+      return 0;
     }
 
     function laneX(laneIndex, y) {
@@ -300,12 +333,19 @@
       saveProfile();
       easterEggImmune = playerNameInput.value.trim() === "LaksenVax";
       canvas.dataset.immune = easterEggImmune ? "true" : "false";
+      score = 0;
+      roadTurns = [];
+      roadGeneratedUntil = 0;
       lane = 1;
-      playerX = laneX(lane, 510);
+      playerY = 510;
+      verticalDirection = 0;
+      verticalKeys.clear();
+      gyroVerticalDirection = 0;
+      gyroLaneDirection = 0;
+      playerX = laneX(lane, playerY);
       laneSteering = 0;
       laneChangeProgress = 1;
       enemies = [];
-      score = 0;
       roadOffset = 0;
       spawnTimer = 0;
       lastTime = 0;
@@ -393,7 +433,6 @@
       if (!running) return;
       playHorn();
 
-      const playerY = 510;
       const target = enemies.find((enemy) =>
         !enemy.pushed &&
         enemy.lane === lane &&
@@ -411,8 +450,6 @@
       if (enemy.pushed) return false;
       if (easterEggImmune) return false;
       const enemyX = laneX(enemy.lane, enemy.y);
-      const playerX = laneX(lane, 510);
-      const playerY = 510;
       return Math.abs(enemyX - playerX) < 46 &&
         enemy.y + player.height > playerY &&
         enemy.y < playerY + player.height;
@@ -443,9 +480,12 @@
       enemies = enemies.filter((enemy) =>
         enemy.y < canvas.height + 100 && enemy.pushOffset < 100
       );
+      const verticalInput = Math.max(-1, Math.min(1, verticalDirection + gyroVerticalDirection));
+      playerY = Math.max(120, Math.min(canvas.height - player.height, playerY + verticalInput * delta * 3.5));
+
       laneChangeProgress = Math.min(1, laneChangeProgress + delta * 0.055);
       const easedProgress = 1 - Math.pow(1 - laneChangeProgress, 3);
-      const targetPlayerX = laneX(lane, 510);
+      const targetPlayerX = laneX(lane, playerY);
       playerX += (targetPlayerX - playerX) * (0.12 + easedProgress * 0.12) * delta;
 
       if (laneChangeProgress >= 1) {
@@ -457,10 +497,10 @@
       const sway = laneChangeProgress < 1
         ? Math.sin(laneChangeProgress * Math.PI) * laneSteering * 7
         : 0;
-      ctx.translate(playerX, 510);
+      ctx.translate(playerX, playerY);
       ctx.rotate(sway * Math.PI / 180);
-      ctx.translate(-playerX, -510);
-      drawCar(playerX, 510, playerColor, true);
+      ctx.translate(-playerX, -playerY);
+      drawCar(playerX, playerY, playerColor, true);
       ctx.restore();
 
       scoreElement.textContent = `${Math.floor(score)} m`;
@@ -484,7 +524,7 @@
         document.querySelector(".mini-car").style.background = playerColor;
         if (!running) {
           drawRoad();
-          drawCar(laneX(lane, 510), 510, playerColor, true);
+          drawCar(laneX(lane, playerY), playerY, playerColor, true);
         }
       });
     });
@@ -511,7 +551,49 @@
       if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
       if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
       if (event.code === "KeyH" && !event.repeat) honk();
+      if (event.code === "KeyL" && !event.repeat) toggleEasterEggByShake();
       if (event.code === "KeyS" && !event.repeat) breakEasterEgg();
+      if (event.code === "ArrowUp" || event.code === "ArrowDown") {
+        event.preventDefault();
+        if (running) {
+          verticalKeys.add(event.code);
+          verticalDirection = verticalKeys.has("ArrowUp") ? -1 : 1;
+        }
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      if (event.code !== "ArrowUp" && event.code !== "ArrowDown") return;
+      verticalKeys.delete(event.code);
+      verticalDirection = verticalKeys.has("ArrowUp") ? -1 : verticalKeys.has("ArrowDown") ? 1 : 0;
+    });
+
+    window.addEventListener("blur", () => {
+      verticalKeys.clear();
+      verticalDirection = 0;
+    });
+
+    window.addEventListener("deviceorientation", (event) => {
+      if (event.beta === null || event.gamma === null) return;
+      if (gyroBaselineBeta === null || gyroBaselineGamma === null) {
+        gyroBaselineBeta = event.beta;
+        gyroBaselineGamma = event.gamma;
+        return;
+      }
+
+      const pitch = event.beta - gyroBaselineBeta;
+      const roll = event.gamma - gyroBaselineGamma;
+      gyroVerticalDirection = Math.abs(pitch) > 7
+        ? Math.max(-1, Math.min(1, pitch / 25))
+        : 0;
+
+      const laneDirection = Math.abs(roll) < 7 ? 0 : Math.sign(roll);
+      if (laneDirection === 0) {
+        gyroLaneDirection = 0;
+      } else if (laneDirection !== gyroLaneDirection) {
+        move(laneDirection);
+        gyroLaneDirection = laneDirection;
+      }
     });
 
     window.addEventListener("devicemotion", (event) => {
@@ -542,17 +624,23 @@
     }, { passive: true });
 
     document.getElementById("startButton").addEventListener("click", async () => {
-      if (typeof DeviceMotionEvent?.requestPermission === "function") {
+      const sensors = [window.DeviceMotionEvent, window.DeviceOrientationEvent];
+      const permissionRequests = sensors
+        .filter((sensor) => typeof sensor?.requestPermission === "function")
+        .map((sensor) => sensor.requestPermission());
+
+      for (const request of permissionRequests) {
         try {
-          await DeviceMotionEvent.requestPermission();
-        } catch {
-          return;
+          const permission = await request;
+          if (permission !== "granted") console.warn("Motion sensor permission was not granted.");
+        } catch (error) {
+          console.warn("Could not request motion sensor permission.", error);
         }
       }
     });
 
     loadProfile();
     drawRoad();
-    drawCar(laneX(lane, 510), 510, playerColor, true);
+    drawCar(laneX(lane, playerY), playerY, playerColor, true);
   })();
 </script>
