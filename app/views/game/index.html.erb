@@ -28,7 +28,7 @@
         <div class="mini-car" aria-hidden="true"></div>
         <p class="eyebrow">KLAR PÅ MOTORVEJEN?</p>
         <h2>Undvig trafikken</h2>
-        <p>Svup eller brug pilene. Tryk på BÅT for at skubbe biler væk.</p>
+        <p>Svup, brug pilene eller vip mobilen. Lås kanonen op ved 500 m!</p>
         <label class="player-name">
           Dit navn
           <input type="text" id="playerName" maxlength="20" autocomplete="nickname" placeholder="Skriv dit navn">
@@ -74,6 +74,9 @@
     <button type="button" id="hornButton" class="horn-button" aria-label="Brug båthornet">
       <span aria-hidden="true">📣</span> BÅT!
     </button>
+    <button type="button" id="cannonButton" class="cannon-button" aria-label="Skyd med kanonen" disabled hidden>
+      <span aria-hidden="true">💥</span><small>KANON</small>
+    </button>
     <button type="button" id="rightButton" aria-label="Kør til højre">→</button>
   </nav>
 </main>
@@ -89,6 +92,8 @@
     const scoreLabel = document.getElementById("scoreLabel");
     const finalScore = document.getElementById("finalScore");
     const playerNameInput = document.getElementById("playerName");
+    const cannonButton = document.getElementById("cannonButton");
+    const controls = document.querySelector(".controls");
     const recordHolderName = document.getElementById("recordHolderName");
     const recordHolderScore = document.getElementById("recordHolderScore");
     const recordPopup = document.getElementById("recordPopup");
@@ -96,11 +101,15 @@
     const recordDistance = document.getElementById("recordDistance");
 
     const lanes = [78, 180, 282];
+    const easterEggNames = ["LaksenVax", "Sebastian"];
     let lane = 1;
     let enemies = [];
     let pushClouds = [];
+    let cannonShots = [];
     let running = false;
     let score = 0;
+    let cannonUnlocked = false;
+    let cannonCooldown = 0;
     let roadOffset = 0;
     let lastTime = 0;
     let spawnTimer = 0;
@@ -112,6 +121,10 @@
     let gyroBaselineBeta = null;
     let gyroBaselineGamma = null;
     let gyroLaneDirection = 0;
+    let lastGyroLaneMove = 0;
+    let lastOrientationTime = 0;
+    let motionBaselinePitch = null;
+    let motionBaselineRoll = null;
     let audioContext;
 
     const player = { width: 52, height: 92 };
@@ -156,6 +169,25 @@
     function laneX(laneIndex, y) {
       return lanes[laneIndex] + roadCurve(y);
     }
+
+    function steerWithGyro(pitch, roll) {
+      if (!running) return;
+
+      gyroVerticalDirection = Math.abs(pitch) > 7
+        ? Math.max(-1, Math.min(1, pitch / 25))
+        : 0;
+
+      const direction = Math.abs(roll) < 7 ? 0 : Math.sign(roll);
+      if (direction === 0) {
+        gyroLaneDirection = 0;
+        lastGyroLaneMove = 0;
+      } else if (direction !== gyroLaneDirection || Date.now() - lastGyroLaneMove > 450) {
+        move(direction);
+        gyroLaneDirection = direction;
+        lastGyroLaneMove = Date.now();
+      }
+    }
+
     const profileKey = "det-blaa-lyn-player";
     const recordMessages = [
       "Fedt kørt!",
@@ -225,8 +257,29 @@
     }
 
     function drawRoad() {
-      ctx.fillStyle = "#26313a";
+      const grass = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      grass.addColorStop(0, "#467c58");
+      grass.addColorStop(0.5, "#315d49");
+      grass.addColorStop(1, "#24483d");
+      ctx.fillStyle = grass;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = "#a0c57a";
+      ctx.lineWidth = 2;
+      for (let y = roadOffset % 36 - 36; y < canvas.height; y += 36) {
+        const curve = roadCurve(y);
+        const row = Math.floor((y + roadOffset) / 36);
+        [10 + curve, 350 + curve].forEach((x, index) => {
+          const sway = Math.sin(row * 2.1 + index) * 4;
+          ctx.beginPath();
+          ctx.moveTo(x + sway, y + 9);
+          ctx.lineTo(x + sway + (index ? -3 : 3), y);
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
 
       ctx.beginPath();
       for (let y = 0; y <= canvas.height; y += 8) {
@@ -238,30 +291,61 @@
         ctx.lineTo(336 + roadCurve(y), y);
       }
       ctx.closePath();
-      ctx.fillStyle = "#3b464d";
+      const asphalt = ctx.createLinearGradient(24, 0, 336, 0);
+      asphalt.addColorStop(0, "#29363d");
+      asphalt.addColorStop(0.18, "#3a4850");
+      asphalt.addColorStop(0.5, "#46535a");
+      asphalt.addColorStop(0.82, "#3a4850");
+      asphalt.addColorStop(1, "#29363d");
+      ctx.shadowColor = "rgba(10,20,20,.45)";
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = asphalt;
       ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
 
-      ctx.strokeStyle = "#f6d365";
-      ctx.lineWidth = 5;
-      [24, 336].forEach((baseX) => {
-        ctx.beginPath();
-        for (let y = 0; y <= canvas.height; y += 8) {
-          const x = baseX + roadCurve(y);
-          if (y === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+      for (let y = roadOffset % 92 - 92; y < canvas.height; y += 92) {
+        const stripe = Math.floor((y + roadOffset) / 92) % 2 === 0 ? "#ded6c2" : "#bd7068";
+        [31, 329].forEach((baseX) => {
+          const curve = roadCurve(y);
+          const angle = Math.atan((roadCurve(y + 4) - roadCurve(y - 4)) / 8);
+          ctx.save();
+          ctx.translate(baseX + curve, y + 42);
+          ctx.rotate(angle);
+          ctx.globalAlpha = 0.82;
+          ctx.fillStyle = stripe;
+          roundedRect(-3, -11, 6, 22, 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.1;
+      ctx.fillStyle = "#d8e1de";
+      for (let y = -24; y < canvas.height; y += 36) {
+        const row = Math.floor((y + roadOffset) / 36);
+        for (let i = 0; i < 7; i += 1) {
+          const baseX = 52 + ((i * 43 + row * 29) % 256);
+          ctx.fillRect(baseX + roadCurve(y), y + ((row * 13 + i * 7) % 22), 2, 2);
         }
-        ctx.stroke();
-      });
+      }
+      ctx.restore();
 
       ctx.fillStyle = "#eef1e5";
       for (let y = roadOffset - 80; y < canvas.height; y += 80) {
         [127, 229].forEach((baseX) => {
-          ctx.fillRect(baseX + roadCurve(y), y, 6, 42);
+          ctx.fillStyle = "rgba(8,17,20,.35)";
+          roundedRect(baseX + roadCurve(y) + 2, y + 2, 7, 42, 3);
+          ctx.fill();
+          ctx.fillStyle = "#f6f0dc";
+          roundedRect(baseX + roadCurve(y), y, 6, 42, 3);
+          ctx.fill();
         });
       }
 
-      ctx.fillStyle = "rgba(255,255,255,.12)";
-      [49, 311].forEach((baseX) => {
+      ctx.fillStyle = "rgba(255,255,255,.14)";
+      [53, 307].forEach((baseX) => {
         ctx.beginPath();
         for (let y = 0; y <= canvas.height; y += 8) {
           const x = baseX + roadCurve(y);
@@ -296,19 +380,50 @@
       ctx.fillRect(player.width / 2 - 6, 12, 11, 28);
       ctx.fillRect(-player.width / 2 - 5, 58, 11, 28);
       ctx.fillRect(player.width / 2 - 6, 58, 11, 28);
+      ctx.fillStyle = "#829197";
+      [[-26, 20], [26, 20], [-26, 72], [26, 72]].forEach(([wheelX, wheelY]) => {
+        ctx.beginPath();
+        ctx.arc(wheelX, wheelY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#d1d9d5";
+        ctx.beginPath();
+        ctx.arc(wheelX, wheelY, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#829197";
+      });
 
       roundedRect(-25, 4, 50, 84, 10);
       ctx.fillStyle = color;
       ctx.fill();
+      roundedRect(-25, 4, 50, 84, 10);
+      const bodyShine = ctx.createLinearGradient(-25, 0, 25, 0);
+      bodyShine.addColorStop(0, "rgba(0,0,0,.24)");
+      bodyShine.addColorStop(0.22, "rgba(255,255,255,.08)");
+      bodyShine.addColorStop(0.5, "rgba(255,255,255,.24)");
+      bodyShine.addColorStop(0.78, "rgba(255,255,255,.04)");
+      bodyShine.addColorStop(1, "rgba(0,0,0,.22)");
+      ctx.fillStyle = bodyShine;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.28)";
+      ctx.lineWidth = 1;
+      roundedRect(-25, 4, 50, 84, 10);
+      ctx.stroke();
 
       ctx.fillStyle = "rgba(255,255,255,.18)";
       ctx.fillRect(-20, 8, 40, 5);
       ctx.fillRect(-20, 79, 40, 4);
 
       roundedRect(-17, 20, 34, 22, 6);
-      ctx.fillStyle = "#90bac7";
+      const windshield = ctx.createLinearGradient(-17, 20, 17, 42);
+      windshield.addColorStop(0, "#c8f3ec");
+      windshield.addColorStop(0.45, "#76a6b0");
+      windshield.addColorStop(1, "#42616b");
+      ctx.fillStyle = windshield;
       ctx.fill();
-      ctx.fillRect(-13, 24, 26, 3);
+      ctx.fillStyle = "rgba(255,255,255,.45)";
+      ctx.fillRect(-12, 23, 24, 2);
+      ctx.fillStyle = "rgba(21,36,43,.38)";
+      ctx.fillRect(-13, 37, 26, 2);
 
       ctx.fillStyle = "#1a252b";
       ctx.fillRect(-19, 48, 38, 7);
@@ -318,13 +433,28 @@
       ctx.fill();
 
       ctx.fillStyle = playerCar ? "#fff4aa" : "#ff6659";
+      ctx.shadowColor = playerCar ? "rgba(255,244,170,.8)" : "rgba(255,102,89,.65)";
+      ctx.shadowBlur = 8;
       ctx.fillRect(-21, 8, 10, 5);
       ctx.fillRect(11, 8, 10, 5);
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
 
       ctx.fillStyle = "#151b1e";
       ctx.fillRect(-28, 0, 56, 5);
       ctx.fillRect(-24, 5, 5, 7);
       ctx.fillRect(19, 5, 5, 7);
+
+      if (playerCar && cannonUnlocked) {
+        ctx.fillStyle = "#172126";
+        roundedRect(-6, 8, 12, 16, 4);
+        ctx.fill();
+        ctx.fillStyle = "#a9b5b4";
+        roundedRect(-3, -7, 6, 20, 2);
+        ctx.fill();
+        ctx.fillStyle = "#f4c45f";
+        ctx.fillRect(-2, -7, 4, 4);
+      }
       ctx.restore();
     }
 
@@ -347,6 +477,19 @@
       });
     }
 
+    function drawCannonShot(x, y) {
+      ctx.save();
+      ctx.shadowColor = "rgba(255,196,74,.85)";
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = "#ffb84d";
+      roundedRect(x - 4, y - 13, 8, 18, 3);
+      ctx.fill();
+      ctx.fillStyle = "#fff4aa";
+      roundedRect(x - 2, y - 10, 4, 10, 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     function spawnEnemy() {
       const available = lanes.filter((_, index) => {
         return !enemies.some((enemy) => enemy.lane === index && enemy.y < 180);
@@ -367,7 +510,7 @@
 
     function reset() {
       saveProfile();
-      easterEggImmune = playerNameInput.value.trim() === "LaksenVax";
+      easterEggImmune = easterEggNames.includes(playerNameInput.value.trim());
       canvas.dataset.immune = easterEggImmune ? "true" : "false";
       score = 0;
       roadTurns = [];
@@ -379,12 +522,19 @@
       verticalKeys.clear();
       gyroVerticalDirection = 0;
       gyroLaneDirection = 0;
+      lastGyroLaneMove = 0;
       playerX = laneX(lane, playerY);
       laneSteering = 0;
       laneChangeProgress = 1;
       enemies = [];
       roadOffset = 0;
       spawnTimer = 0;
+      cannonShots = [];
+      cannonUnlocked = false;
+      cannonCooldown = 0;
+      cannonButton.hidden = true;
+      cannonButton.disabled = true;
+      controls.classList.remove("cannon-unlocked");
       lastTime = 0;
       scoreElement.textContent = "0 m";
       gameOverScreen.hidden = true;
@@ -427,6 +577,21 @@
       enemy.pushDirection = enemy.lane === lanes.length - 1 ? 1 : -1;
       enemy.pushSpeed = speed;
       enemy.pushSpin = spin;
+    }
+
+    function unlockCannon() {
+      if (cannonUnlocked) return;
+      cannonUnlocked = true;
+      cannonButton.hidden = false;
+      cannonButton.disabled = false;
+      controls.classList.add("cannon-unlocked");
+    }
+
+    function fireCannon() {
+      if (!running || !cannonUnlocked || cannonCooldown > 0) return;
+      cannonShots.push({ lane, y: playerY });
+      cannonCooldown = 30;
+      cannonButton.disabled = true;
     }
 
     function playHorn() {
@@ -507,6 +672,11 @@
       lastTime = time;
 
       score += delta * 0.18;
+      if (score >= 500) unlockCannon();
+      if (cannonUnlocked) {
+        cannonCooldown = Math.max(0, cannonCooldown - delta);
+        cannonButton.disabled = cannonCooldown > 0;
+      }
       roadOffset = (roadOffset + delta * 7) % 80;
       spawnTimer += delta;
 
@@ -528,6 +698,24 @@
         drawCar(x, enemy.y, enemy.color, false, rotation);
       });
       drawPushClouds(delta);
+
+      cannonShots.forEach((shot) => {
+        shot.y -= delta * 12;
+        const shotX = laneX(shot.lane, shot.y);
+        const target = enemies.find((enemy) =>
+          !enemy.pushed &&
+          Math.abs(laneX(enemy.lane, enemy.y) - shotX) < 30 &&
+          shot.y < enemy.y + player.height &&
+          shot.y + 16 > enemy.y
+        );
+        if (target) {
+          pushEnemy(target, 10, 0.02);
+          shot.hit = true;
+        } else {
+          drawCannonShot(shotX, shot.y);
+        }
+      });
+      cannonShots = cannonShots.filter((shot) => !shot.hit && shot.y > -20);
 
       enemies = enemies.filter((enemy) =>
         enemy.y < canvas.height + 100 && enemy.pushOffset < 190
@@ -569,6 +757,7 @@
     document.getElementById("leftButton").addEventListener("pointerdown", () => move(-1));
     document.getElementById("rightButton").addEventListener("pointerdown", () => move(1));
     document.getElementById("hornButton").addEventListener("pointerdown", honk);
+    cannonButton.addEventListener("pointerdown", fireCannon);
     document.querySelectorAll('input[name="carColor"]').forEach((input) => {
       input.addEventListener("change", () => {
         playerColor = input.value;
@@ -593,7 +782,7 @@
     }
 
     function toggleEasterEggByShake() {
-      if (playerNameInput.value.trim() !== "LaksenVax") return;
+      if (!easterEggNames.includes(playerNameInput.value.trim())) return;
       easterEggImmune = !easterEggImmune;
       canvas.dataset.immune = easterEggImmune ? "true" : "false";
       playHorn();
@@ -605,6 +794,7 @@
       if (event.code === "KeyH" && !event.repeat) honk();
       if (event.code === "KeyL" && !event.repeat) toggleEasterEggByShake();
       if (event.code === "KeyS" && !event.repeat) breakEasterEgg();
+      if (event.code === "KeyC" && !event.repeat) fireCannon();
       if (event.code === "ArrowUp" || event.code === "ArrowDown") {
         event.preventDefault();
         if (running) {
@@ -627,37 +817,37 @@
 
     window.addEventListener("deviceorientation", (event) => {
       if (event.beta === null || event.gamma === null) return;
+      lastOrientationTime = Date.now();
       if (gyroBaselineBeta === null || gyroBaselineGamma === null) {
         gyroBaselineBeta = event.beta;
         gyroBaselineGamma = event.gamma;
         return;
       }
 
-      const pitch = event.beta - gyroBaselineBeta;
-      const roll = event.gamma - gyroBaselineGamma;
-      gyroVerticalDirection = Math.abs(pitch) > 7
-        ? Math.max(-1, Math.min(1, pitch / 25))
-        : 0;
-
-      const laneDirection = Math.abs(roll) < 7 ? 0 : Math.sign(roll);
-      if (laneDirection === 0) {
-        gyroLaneDirection = 0;
-      } else if (laneDirection !== gyroLaneDirection) {
-        move(laneDirection);
-        gyroLaneDirection = laneDirection;
-      }
+      steerWithGyro(event.beta - gyroBaselineBeta, event.gamma - gyroBaselineGamma);
     });
 
     window.addEventListener("devicemotion", (event) => {
       const acceleration = event.accelerationIncludingGravity;
       if (!acceleration) return;
 
-      const strength = Math.sqrt(
-        (acceleration.x || 0) ** 2 +
-        (acceleration.y || 0) ** 2 +
-        (acceleration.z || 0) ** 2
-      );
       const now = Date.now();
+      const x = acceleration.x || 0;
+      const y = acceleration.y || 0;
+      const z = acceleration.z || 0;
+      const strength = Math.sqrt(x ** 2 + y ** 2 + z ** 2);
+
+      if (now - lastOrientationTime > 1500) {
+        const pitch = Math.atan2(y, Math.hypot(x, z)) * 180 / Math.PI;
+        const roll = Math.atan2(x, z) * 180 / Math.PI;
+        if (motionBaselinePitch === null || motionBaselineRoll === null) {
+          motionBaselinePitch = pitch;
+          motionBaselineRoll = roll;
+        } else {
+          steerWithGyro(pitch - motionBaselinePitch, roll - motionBaselineRoll);
+        }
+      }
+
       if (strength > 24 && now - lastShakeTime > 1000) {
         lastShakeTime = now;
         toggleEasterEggByShake();
@@ -677,9 +867,15 @@
 
     document.getElementById("startButton").addEventListener("click", async () => {
       const sensors = [window.DeviceMotionEvent, window.DeviceOrientationEvent];
-      const permissionRequests = sensors
-        .filter((sensor) => typeof sensor?.requestPermission === "function")
-        .map((sensor) => sensor.requestPermission());
+      const permissionRequests = [];
+      sensors.forEach((sensor) => {
+        if (typeof sensor?.requestPermission !== "function") return;
+        try {
+          permissionRequests.push(sensor.requestPermission());
+        } catch (error) {
+          console.warn("Could not request motion sensor permission.", error);
+        }
+      });
 
       for (const request of permissionRequests) {
         try {
