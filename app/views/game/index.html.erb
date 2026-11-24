@@ -98,6 +98,7 @@
     const lanes = [78, 180, 282];
     let lane = 1;
     let enemies = [];
+    let pushClouds = [];
     let running = false;
     let score = 0;
     let roadOffset = 0;
@@ -166,7 +167,22 @@
       "Hvem lærte den bil at svæve?",
       "Rekordalarm! Hils på benene!",
       "Det var næsten ulovligt godt!",
-      "Seb har mistet stemmen af begejstring!"
+      "Seb har mistet stemmen af begejstring!",
+      "Ikke kønt, men det tæller.",
+      "Det var næsten imponerende. Næsten.",
+      "Rekord! Skriv det ned, det sker ikke hver dag.",
+      "Bilen gjorde arbejdet. Du sad mest med.",
+      "Du slog rekorden. Trafikken lod dig få den.",
+      "Seb kalder det held med hjul på.",
+      "Farten var højere end præcisionen.",
+      "Sådan! Nu mangler du bare at gøre det igen.",
+      "Det var tæt på at ligne talent.",
+      "Kører du sådan hver gang, eller var det et engangstilfælde?",
+      "Endelig lykkedes det. Vi var begyndt at tvivle.",
+      "Selv trafikken blev overrasket over den dér.",
+      "Du kom i mål. Styringen kom bagefter.",
+      "En flot rekord. Forventningerne var også lave.",
+      "Seb havde nået at lave en kop kaffe imens."
     ];
 
     function loadProfile() {
@@ -261,9 +277,10 @@
       ctx.roundRect(x, y, width, height, radius);
     }
 
-    function drawCar(x, y, color, playerCar = false) {
+    function drawCar(x, y, color, playerCar = false, rotation = 0) {
       ctx.save();
       ctx.translate(x, y);
+      ctx.rotate(rotation);
       ctx.shadowColor = "rgba(0,0,0,.25)";
       ctx.shadowBlur = 8;
       ctx.shadowOffsetY = 5;
@@ -311,6 +328,25 @@
       ctx.restore();
     }
 
+    function drawPushClouds(delta) {
+      pushClouds = pushClouds.filter((cloud) => cloud.age < 24);
+      pushClouds.forEach((cloud) => {
+        cloud.age += delta;
+        const progress = cloud.age / 24;
+        ctx.save();
+        ctx.globalAlpha = 1 - progress;
+        ctx.fillStyle = "#eef1e5";
+        const radius = 5 + progress * 8;
+        const y = cloud.y - progress * 14;
+        [[-radius, 0], [0, -radius / 2], [radius, 0]].forEach(([offsetX, offsetY]) => {
+          ctx.beginPath();
+          ctx.arc(cloud.x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.restore();
+      });
+    }
+
     function spawnEnemy() {
       const available = lanes.filter((_, index) => {
         return !enemies.some((enemy) => enemy.lane === index && enemy.y < 180);
@@ -337,6 +373,7 @@
       roadTurns = [];
       roadGeneratedUntil = 0;
       lane = 1;
+      pushClouds = [];
       playerY = 510;
       verticalDirection = 0;
       verticalKeys.clear();
@@ -383,6 +420,13 @@
       lane = nextLane;
       laneChangeProgress = 0;
       laneSteering = direction;
+    }
+
+    function pushEnemy(enemy, speed, spin) {
+      enemy.pushed = true;
+      enemy.pushDirection = enemy.lane === lanes.length - 1 ? 1 : -1;
+      enemy.pushSpeed = speed;
+      enemy.pushSpin = spin;
     }
 
     function playHorn() {
@@ -440,19 +484,21 @@
         enemy.y + player.height > playerY - 190
       );
 
-      if (target) {
-        target.pushed = true;
-        target.pushDirection = target.lane === lanes.length - 1 ? 1 : -1;
-      }
+      if (target) pushEnemy(target, 5, 0.008);
     }
 
     function collision(enemy) {
       if (enemy.pushed) return false;
-      if (easterEggImmune) return false;
       const enemyX = laneX(enemy.lane, enemy.y);
-      return Math.abs(enemyX - playerX) < 46 &&
+      const colliding = Math.abs(enemyX - playerX) < 46 &&
         enemy.y + player.height > playerY &&
         enemy.y < playerY + player.height;
+      if (!colliding) return false;
+      if (easterEggImmune) {
+        pushEnemy(enemy, 10, 0.02);
+        return false;
+      }
+      return true;
     }
 
     function loop(time) {
@@ -472,13 +518,19 @@
       drawRoad();
       enemies.forEach((enemy) => {
         enemy.y += delta * (4.2 + Math.min(score / 180, 4));
-        if (enemy.pushed) enemy.pushOffset += delta * 4.5;
+        if (enemy.pushed) enemy.pushOffset += delta * enemy.pushSpeed;
         const x = laneX(enemy.lane, enemy.y) + enemy.pushDirection * enemy.pushOffset;
-        drawCar(x, enemy.y, enemy.color);
+        if (enemy.pushSpeed >= 9 && enemy.pushOffset >= 150 && !enemy.cloudSpawned) {
+          pushClouds.push({ x, y: enemy.y, age: 0 });
+          enemy.cloudSpawned = true;
+        }
+        const rotation = enemy.pushed ? enemy.pushDirection * enemy.pushOffset * enemy.pushSpin : 0;
+        drawCar(x, enemy.y, enemy.color, false, rotation);
       });
+      drawPushClouds(delta);
 
       enemies = enemies.filter((enemy) =>
-        enemy.y < canvas.height + 100 && enemy.pushOffset < 100
+        enemy.y < canvas.height + 100 && enemy.pushOffset < 190
       );
       const verticalInput = Math.max(-1, Math.min(1, verticalDirection + gyroVerticalDirection));
       playerY = Math.max(120, Math.min(canvas.height - player.height, playerY + verticalInput * delta * 3.5));
