@@ -97,6 +97,53 @@ canvas {
   display: block;
 }
 
+.record-popup {
+  position: absolute;
+  z-index: 5;
+  top: 18px;
+  left: 50%;
+  min-width: 180px;
+  transform: translateX(-50%);
+  padding: 12px 18px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: var(--orange);
+  box-shadow: 5px 5px 0 var(--ink);
+  text-align: center;
+  animation: record-pop .45s cubic-bezier(.2,.8,.2,1);
+}
+
+.record-popup[hidden] { display: none; }
+
+.record-popup span {
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.record-popup strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 24px;
+}
+
+.record-popup small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+@keyframes record-pop {
+  0% { transform: translateX(-50%) scale(.7) rotate(-3deg); opacity: 0; }
+  70% { transform: translateX(-50%) scale(1.08) rotate(1deg); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1) rotate(0); }
+}
+
 .start-screen,
 .game-over {
   position: absolute;
@@ -160,6 +207,78 @@ canvas {
 
 .mini-car::before { left: 7px; }
 .mini-car::after { right: 7px; }
+
+.player-name {
+  display: block;
+  margin: 0 0 12px;
+  color: #627068;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.player-name input {
+  width: 100%;
+  height: 42px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  font: 700 16px Arial, Helvetica, sans-serif;
+  text-transform: none;
+}
+
+.color-picker {
+  margin: 0 0 16px;
+  padding: 10px 8px 8px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.color-picker legend {
+  padding: 0 6px;
+  color: #627068;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.color-picker label {
+  position: relative;
+  cursor: pointer;
+}
+
+.color-picker input {
+  position: absolute;
+  opacity: 0;
+}
+
+.color-swatch {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 2px 2px 0 rgba(24,34,41,.25);
+}
+
+.color-picker input:checked + .color-swatch {
+  outline: 3px solid white;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--ink);
+}
+
+.color-swatch.teal { background: #3dc9b6; }
+.color-swatch.orange { background: #ffb84d; }
+.color-swatch.red { background: #ee5d54; }
+.color-swatch.purple { background: #9d86e6; }
+.color-swatch.yellow { background: #f2a93b; }
 
 button {
   min-height: 52px;

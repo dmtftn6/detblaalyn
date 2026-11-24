@@ -5,13 +5,18 @@
       <h1>Motorvejen</h1>
     </div>
     <div class="score-card" aria-live="polite">
-      <span>Distance</span>
+      <span id="scoreLabel">Distance</span>
       <strong id="score">0 m</strong>
     </div>
   </header>
 
   <section class="game-stage" id="gameStage" aria-label="Bilspil">
     <canvas id="gameCanvas" width="360" height="640"></canvas>
+    <div class="record-popup" id="recordPopup" role="status" aria-live="assertive" hidden>
+      <span id="recordMessage">Fedt kørt!</span>
+      <strong id="recordDistance">Ny rekord: 0 m</strong>
+      <small>— siger Seb</small>
+    </div>
 
     <div class="start-screen" id="startScreen">
       <div class="start-card">
@@ -19,6 +24,33 @@
         <p class="eyebrow">KLAR PÅ MOTORVEJEN?</p>
         <h2>Undvig trafikken</h2>
         <p>Svup eller brug pilene. Tryk på BÅT for at skubbe biler væk.</p>
+        <label class="player-name">
+          Dit navn
+          <input type="text" id="playerName" maxlength="20" autocomplete="nickname" placeholder="Skriv dit navn">
+        </label>
+        <fieldset class="color-picker">
+          <legend>Vælg bilfarve</legend>
+          <label>
+            <input type="radio" name="carColor" value="#3dc9b6" checked>
+            <span class="color-swatch teal" title="Turkis"></span>
+          </label>
+          <label>
+            <input type="radio" name="carColor" value="#ffb84d">
+            <span class="color-swatch orange" title="Orange"></span>
+          </label>
+          <label>
+            <input type="radio" name="carColor" value="#ee5d54">
+            <span class="color-swatch red" title="Rød"></span>
+          </label>
+          <label>
+            <input type="radio" name="carColor" value="#9d86e6">
+            <span class="color-swatch purple" title="Lilla"></span>
+          </label>
+          <label>
+            <input type="radio" name="carColor" value="#f2a93b">
+            <span class="color-swatch yellow" title="Gul"></span>
+          </label>
+        </fieldset>
         <button type="button" id="startButton">Kør nu</button>
       </div>
     </div>
@@ -49,7 +81,12 @@
     const startScreen = document.getElementById("startScreen");
     const gameOverScreen = document.getElementById("gameOver");
     const scoreElement = document.getElementById("score");
+    const scoreLabel = document.getElementById("scoreLabel");
     const finalScore = document.getElementById("finalScore");
+    const playerNameInput = document.getElementById("playerName");
+    const recordPopup = document.getElementById("recordPopup");
+    const recordMessage = document.getElementById("recordMessage");
+    const recordDistance = document.getElementById("recordDistance");
 
     const lanes = [78, 180, 282];
     let lane = 1;
@@ -63,6 +100,58 @@
     let audioContext;
 
     const player = { width: 52, height: 92 };
+    let playerColor = "#3dc9b6";
+    let playerX = lanes[1];
+    let laneSteering = 0;
+    let laneChangeProgress = 1;
+    const profileKey = "det-blaa-lyn-player";
+    const recordMessages = [
+      "Fedt kørt!",
+      "Hold da op, den fløj!",
+      "Seb bliver slet ikke overrasket!",
+      "Ny afstand! Ingen småt!",
+      "Den bil har mere fart end en snegl i ferie!",
+      "Motorvejen må hellere give tiebreak!",
+      "Hvem lærte den bil at svæve?",
+      "Rekordalarm! Hils på benene!",
+      "Det var næsten ulovligt godt!",
+      "Seb har mistet stemmen af begejstring!"
+    ];
+
+    function loadProfile() {
+      try {
+        const profile = JSON.parse(localStorage.getItem(profileKey)) || {};
+        const allowedColors = ["#3dc9b6", "#ffb84d", "#ee5d54", "#9d86e6", "#f2a93b"];
+
+        if (typeof profile.name === "string") {
+          playerNameInput.value = profile.name.slice(0, 20);
+        }
+        if (allowedColors.includes(profile.color)) {
+          playerColor = profile.color;
+          const selected = document.querySelector(`input[name="carColor"][value="${profile.color}"]`);
+          if (selected) selected.checked = true;
+          document.querySelector(".mini-car").style.background = profile.color;
+        }
+        if (Number.isFinite(profile.bestScore)) {
+          scoreLabel.textContent = `Bedst: ${Math.floor(profile.bestScore)} m`;
+        }
+      } catch {
+        localStorage.removeItem(profileKey);
+      }
+    }
+
+    function saveProfile() {
+      const existing = JSON.parse(localStorage.getItem(profileKey) || "{}");
+      const name = playerNameInput.value.trim();
+      const currentScore = Math.floor(score);
+      const bestScore = Math.max(Number(existing.bestScore) || 0, currentScore);
+      localStorage.setItem(profileKey, JSON.stringify({
+        name,
+        color: playerColor,
+        bestScore
+      }));
+      return { bestScore, previousBest: Number(existing.bestScore) || 0 };
+    }
 
     function drawRoad() {
       ctx.fillStyle = "#26313a";
@@ -142,7 +231,11 @@
     }
 
     function reset() {
+      saveProfile();
       lane = 1;
+      playerX = lanes[lane];
+      laneSteering = 0;
+      laneChangeProgress = 1;
       enemies = [];
       score = 0;
       roadOffset = 0;
@@ -150,6 +243,7 @@
       lastTime = 0;
       scoreElement.textContent = "0 m";
       gameOverScreen.hidden = true;
+      recordPopup.hidden = true;
       startScreen.hidden = true;
       running = true;
       requestAnimationFrame(loop);
@@ -157,13 +251,31 @@
 
     function endGame() {
       running = false;
+      const finishedScore = Math.floor(score);
+      const { previousBest, bestScore } = saveProfile();
       finalScore.textContent = `${Math.floor(score)} meter`;
+      if (finishedScore > previousBest) {
+        recordMessage.textContent = recordMessages[
+          Math.floor(Math.random() * recordMessages.length)
+        ];
+        recordDistance.textContent = `Ny rekord: ${bestScore} m`;
+        recordPopup.hidden = false;
+        scoreLabel.textContent = `Bedst: ${bestScore} m`;
+        window.setTimeout(() => {
+          recordPopup.hidden = true;
+        }, 3000);
+      }
       gameOverScreen.hidden = false;
     }
 
     function move(direction) {
       if (!running) return;
-      lane = Math.max(0, Math.min(lanes.length - 1, lane + direction));
+      const nextLane = Math.max(0, Math.min(lanes.length - 1, lane + direction));
+      if (nextLane === lane) return;
+
+      lane = nextLane;
+      laneChangeProgress = 0;
+      laneSteering = direction;
     }
 
     function playHorn() {
@@ -241,7 +353,24 @@
       enemies = enemies.filter((enemy) =>
         enemy.y < canvas.height + 100 && enemy.pushOffset < 100
       );
-      drawCar(lanes[lane], 510, "#3dc9b6", true);
+      laneChangeProgress = Math.min(1, laneChangeProgress + delta * 0.055);
+      const easedProgress = 1 - Math.pow(1 - laneChangeProgress, 3);
+      playerX += (lanes[lane] - playerX) * (0.12 + easedProgress * 0.12) * delta;
+
+      if (laneChangeProgress >= 1) {
+        laneSteering = 0;
+        playerX = lanes[lane];
+      }
+
+      ctx.save();
+      const sway = laneChangeProgress < 1
+        ? Math.sin(laneChangeProgress * Math.PI) * laneSteering * 7
+        : 0;
+      ctx.translate(playerX, 510);
+      ctx.rotate(sway * Math.PI / 180);
+      ctx.translate(-playerX, -510);
+      drawCar(playerX, 510, playerColor, true);
+      ctx.restore();
 
       scoreElement.textContent = `${Math.floor(score)} m`;
       if (enemies.some(collision)) {
@@ -257,11 +386,23 @@
     document.getElementById("leftButton").addEventListener("pointerdown", () => move(-1));
     document.getElementById("rightButton").addEventListener("pointerdown", () => move(1));
     document.getElementById("hornButton").addEventListener("pointerdown", honk);
+    document.querySelectorAll('input[name="carColor"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        playerColor = input.value;
+        saveProfile();
+        document.querySelector(".mini-car").style.background = playerColor;
+        if (!running) {
+          drawRoad();
+          drawCar(lanes[lane], 510, playerColor, true);
+        }
+      });
+    });
+    playerNameInput.addEventListener("input", saveProfile);
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
       if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
-      if (event.code === "Space" || event.key.toLowerCase() === "h") honk();
+      if (event.code === "KeyH" && !event.repeat) honk();
     });
 
     stage.addEventListener("touchstart", (event) => {
@@ -275,7 +416,8 @@
       touchStartX = null;
     }, { passive: true });
 
+    loadProfile();
     drawRoad();
-    drawCar(lanes[lane], 510, "#3dc9b6", true);
+    drawCar(lanes[lane], 510, playerColor, true);
   })();
 </script>
